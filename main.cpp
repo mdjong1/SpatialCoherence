@@ -8,7 +8,6 @@
 
 #include "lasreader.hpp"
 
-const int cellCount = 128;
 
 struct Coordinate {
     double id, x, y;
@@ -23,15 +22,16 @@ struct Timings {
 };
 
 int main(int argc, char **argv) {
-    if (argc <= 1) {
-        std::cout << "Not enough input arguments, arg1 must be file name";
-        return 0;
-    } else if (argc > 2) {
-        std::cout << "Too many input arguments!";
+    if (argc != 5) {
+        std::cout << "Invalid number of input arguments!\n";
+        std::cout << "arg1: input_file, arg2: output_file, arg3: cell_count, arg4: thinning_factor\n";
         return 0;
     }
 
     const char *inputFile = argv[1];
+    const char *outputFile = argv[2];
+    const int CELL_COUNT = std::stoi(argv[3]); // std::stoi = cast to int
+    const int THINNING_FACTOR = std::stoi(argv[4]);
 
     LASreadOpener lasreadopener;
     lasreadopener.set_file_name(inputFile);
@@ -46,13 +46,13 @@ int main(int argc, char **argv) {
 
     const int numPoints = lasreader->npoints;
 
-    std::cout << "Amount of points: " << numPoints << "\n";
+    std::cout << "Number of points: " << numPoints << "\n";
 
     const int xDiff = bbox[2] - bbox[0];
     const int yDiff = bbox[3] - bbox[1];
 
-    const int xCellWidth = xDiff / cellCount;
-    const int yCellWidth = yDiff / cellCount;
+    const int xCellWidth = xDiff / CELL_COUNT;
+    const int yCellWidth = yDiff / CELL_COUNT;
 
     std::vector<Coordinate> leftTopCorners;
 
@@ -76,24 +76,28 @@ int main(int argc, char **argv) {
             std::cout << percentage << "% done!\n";
         }
 
-        for (Coordinate corner : leftTopCorners) {
+        if (count % THINNING_FACTOR == 0) {
 
-            if (lasreader->point.inside_rectangle(corner.x, corner.y, corner.x + xCellWidth, corner.y + yCellWidth)) {
+            for (Coordinate corner : leftTopCorners) {
+
+                if (lasreader->point.inside_rectangle(corner.x, corner.y, corner.x + xCellWidth,
+                                                      corner.y + yCellWidth)) {
 
 //                std::cout << lasreader->point.get_x() << ", " << lasreader->point.get_y() << " inside " << corner.x << ", " << corner.y << ", " << corner.x + xCellWidth << ", " << corner.y + yCellWidth << "\n";
 //                std::cout << "corner id = " << corner.id << "\n";
 
-                int currentEpoch = std::chrono::duration_cast<std::chrono::seconds>(
-                        std::chrono::system_clock::now().time_since_epoch()).count();
+                    int currentEpoch = std::chrono::duration_cast<std::chrono::seconds>(
+                            std::chrono::system_clock::now().time_since_epoch()).count();
 
-                try { // Vector exists, update last entry time
-                    timings.at(corner.id).lastTime = currentEpoch;
-                }
-                catch (...) { // Vector doesn't exist, set first + last time and push back
-                    timings.emplace_back(currentEpoch, currentEpoch);
-                }
+                    try { // Vector exists, update last entry time
+                        timings.at(corner.id).lastTime = currentEpoch;
+                    }
+                    catch (...) { // Vector doesn't exist, set first + last time and push back
+                        timings.emplace_back(currentEpoch, currentEpoch);
+                    }
 
-                break;
+                    break;
+                }
             }
         }
 
@@ -112,8 +116,6 @@ int main(int argc, char **argv) {
 
     GDALAllRegister();
 
-    const char *pszDstFilename = "test4.tif";
-
     const char *pszFormat = "GTiff";
     GDALDriver *poDriver;
     poDriver = GetGDALDriverManager()->GetDriverByName(pszFormat);
@@ -123,7 +125,7 @@ int main(int argc, char **argv) {
 
     GDALDataset *poDstDS;
     char **papszOptions = nullptr;
-    poDstDS = poDriver->Create(pszDstFilename, cellCount, cellCount, 1, GDT_Byte, papszOptions);
+    poDstDS = poDriver->Create(outputFile, CELL_COUNT, CELL_COUNT, 1, GDT_Byte, papszOptions);
 
     double adfGeoTransform[6] = { (double)bbox[0], (double)xCellWidth, 0, (double)bbox[3], 0, -(double)yCellWidth };
 
@@ -131,13 +133,13 @@ int main(int argc, char **argv) {
     char *pszSRS_WKT = nullptr;
     GDALRasterBand *poBand;
 
-    GByte abyRaster[cellCount * cellCount];
+    GByte abyRaster[CELL_COUNT * CELL_COUNT];
 
     poDstDS->SetGeoTransform( adfGeoTransform );
 
-    std::cout << cellCount * cellCount << " " << timings.size();
+    std::cout << CELL_COUNT * CELL_COUNT << " " << timings.size();
 
-    for (int i = 0; i < cellCount * cellCount; i++){
+    for (int i = 0; i < CELL_COUNT * CELL_COUNT; i++){
         abyRaster[i] = timings.at(i).lastTime - timings.at(i).firstTime;
     }
 
@@ -150,7 +152,7 @@ int main(int argc, char **argv) {
 
     poBand = poDstDS->GetRasterBand(1);
 
-    poBand->RasterIO(GF_Write, 0, 0, cellCount, cellCount, abyRaster, cellCount, cellCount, GDT_Byte, 0, 0);
+    poBand->RasterIO(GF_Write, 0, 0, CELL_COUNT, CELL_COUNT, abyRaster, CELL_COUNT, CELL_COUNT, GDT_Byte, 0, 0);
 
     GDALClose((GDALDatasetH) poDstDS);
 
