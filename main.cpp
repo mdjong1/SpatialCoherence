@@ -68,6 +68,7 @@ int main(int argc, char **argv) {
     std::vector<Timings> timings;
 
     count = 0;
+    const int startEpoch = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 
     while (lasreader->read_point()) {
 
@@ -86,8 +87,7 @@ int main(int argc, char **argv) {
 //                std::cout << lasreader->point.get_x() << ", " << lasreader->point.get_y() << " inside " << corner.x << ", " << corner.y << ", " << corner.x + xCellWidth << ", " << corner.y + yCellWidth << "\n";
 //                std::cout << "corner id = " << corner.id << "\n";
 
-                    int currentEpoch = std::chrono::duration_cast<std::chrono::seconds>(
-                            std::chrono::system_clock::now().time_since_epoch()).count();
+                    int currentEpoch = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 
                     try { // Vector exists, update last entry time
                         timings.at(corner.id).lastTime = currentEpoch;
@@ -103,16 +103,9 @@ int main(int argc, char **argv) {
 
         count++;
 
-//        if (count > 50000){
-//            break;
-//        }
     }
 
-//    for (Timings result : timings) {
-////        std::cout << result.firstTime << " -> " << result.lastTime << "\n";
-//        std::cout << result.lastTime - result.firstTime << "\n";
-//    }
-
+    std::cout << "Writing GeoTIFF \n";
 
     GDALAllRegister();
 
@@ -125,7 +118,7 @@ int main(int argc, char **argv) {
 
     GDALDataset *poDstDS;
     char **papszOptions = nullptr;
-    poDstDS = poDriver->Create(outputFile, CELL_COUNT, CELL_COUNT, 1, GDT_Byte, papszOptions);
+    poDstDS = poDriver->Create(outputFile, CELL_COUNT, CELL_COUNT, 2, GDT_Byte, papszOptions);
 
     double adfGeoTransform[6] = { (double)bbox[0], (double)xCellWidth, 0, (double)bbox[3], 0, -(double)yCellWidth };
 
@@ -133,14 +126,16 @@ int main(int argc, char **argv) {
     char *pszSRS_WKT = nullptr;
     GDALRasterBand *poBand;
 
-    GByte abyRaster[CELL_COUNT * CELL_COUNT];
+    GByte entryTimesRaster[CELL_COUNT * CELL_COUNT];
+    GByte exitTimesRaster[CELL_COUNT * CELL_COUNT];
 
     poDstDS->SetGeoTransform( adfGeoTransform );
 
-    std::cout << CELL_COUNT * CELL_COUNT << " " << timings.size();
+    std::cout << CELL_COUNT * CELL_COUNT << " " << timings.size() << "\n";
 
     for (int i = 0; i < CELL_COUNT * CELL_COUNT; i++){
-        abyRaster[i] = timings.at(i).lastTime - timings.at(i).firstTime;
+        entryTimesRaster[i] = timings.at(i).firstTime - startEpoch;
+        exitTimesRaster[i] = timings.at(i).lastTime - startEpoch;
     }
 
 //    oSRS.SetWellKnownGeogCS("WGS84");
@@ -151,8 +146,10 @@ int main(int argc, char **argv) {
     CPLFree(pszSRS_WKT);
 
     poBand = poDstDS->GetRasterBand(1);
+    poBand->RasterIO(GF_Write, 0, 0, CELL_COUNT, CELL_COUNT, entryTimesRaster, CELL_COUNT, CELL_COUNT, GDT_Byte, 0, 0);
 
-    poBand->RasterIO(GF_Write, 0, 0, CELL_COUNT, CELL_COUNT, abyRaster, CELL_COUNT, CELL_COUNT, GDT_Byte, 0, 0);
+    poBand = poDstDS->GetRasterBand(2);
+    poBand->RasterIO(GF_Write, 0, 0, CELL_COUNT, CELL_COUNT, exitTimesRaster, CELL_COUNT, CELL_COUNT, GDT_Byte, 0, 0);
 
     GDALClose((GDALDatasetH) poDstDS);
 
