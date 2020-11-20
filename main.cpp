@@ -21,6 +21,15 @@ struct Timings {
     Timings(int first, int last) : firstTime(first), lastTime(last) {}
 };
 
+struct Bbox {
+    int minX, minY, maxX, maxY;
+
+    int xDiff = maxX - minX;
+    int yDiff = maxY - minY;
+
+    Bbox(int min_x, int min_y, int max_x, int max_y) : minX(min_x), minY(min_y), maxX(max_x), maxY(max_y) {}
+};
+
 int main(int argc, char **argv) {
     if (argc != 5) {
         std::cout << "Invalid number of input arguments!\n";
@@ -38,28 +47,25 @@ int main(int argc, char **argv) {
     LASreader *lasreader = lasreadopener.open();
 
     // In AHN3 all corner points are integers
-    const int bbox[4] = {(int) lasreader->get_min_x(), (int) lasreader->get_min_y(),
-                         (int) lasreader->get_max_x(), (int) lasreader->get_max_y()};
+    const Bbox bbox = Bbox((int) lasreader->get_min_x(), (int) lasreader->get_min_y(),
+                           (int) lasreader->get_max_x(), (int) lasreader->get_max_y());
 
-    std::cout << "BBox boundaries: minX = " << bbox[0] << ", minY = " << bbox[1] << ", maxX = " << bbox[2]
-              << ", maxY = " << bbox[3] << "\n";
+    std::cout << "BBox boundaries: minX = " << bbox.minX << ", minY = " << bbox.minY << ", maxX = " << bbox.maxX
+              << ", maxY = " << bbox.maxY << "\n";
 
     const int numPoints = lasreader->npoints;
 
     std::cout << "Number of points: " << numPoints << "\n";
 
-    const int xDiff = bbox[2] - bbox[0];
-    const int yDiff = bbox[3] - bbox[1];
-
-    const int xCellWidth = xDiff / CELL_COUNT;
-    const int yCellWidth = yDiff / CELL_COUNT;
+    const int xCellWidth = bbox.xDiff / CELL_COUNT;
+    const int yCellWidth = bbox.yDiff / CELL_COUNT;
 
     std::vector<Coordinate> leftTopCorners;
 
     int count = 0;
 
-    for (int x = bbox[0]; x < bbox[2]; x += xCellWidth) {
-        for (int y = bbox[1]; y < bbox[3]; y += yCellWidth) {
+    for (int x = bbox.minX; x < bbox.maxX; x += xCellWidth) {
+        for (int y = bbox.minY; y < bbox.maxY; y += yCellWidth) {
             leftTopCorners.emplace_back(count, x, y);
             count++;
         }
@@ -81,8 +87,7 @@ int main(int argc, char **argv) {
 
             for (Coordinate corner : leftTopCorners) {
 
-                if (lasreader->point.inside_rectangle(corner.x, corner.y, corner.x + xCellWidth,
-                                                      corner.y + yCellWidth)) {
+                if (lasreader->point.inside_rectangle(corner.x, corner.y, corner.x + xCellWidth, corner.y + yCellWidth)) {
 
 //                std::cout << lasreader->point.get_x() << ", " << lasreader->point.get_y() << " inside " << corner.x << ", " << corner.y << ", " << corner.x + xCellWidth << ", " << corner.y + yCellWidth << "\n";
 //                std::cout << "corner id = " << corner.id << "\n";
@@ -120,7 +125,7 @@ int main(int argc, char **argv) {
     char **papszOptions = nullptr;
     poDstDS = poDriver->Create(outputFile, CELL_COUNT, CELL_COUNT, 2, GDT_Byte, papszOptions);
 
-    double adfGeoTransform[6] = { (double)bbox[0], (double)xCellWidth, 0, (double)bbox[3], 0, -(double)yCellWidth };
+    double adfGeoTransform[6] = { (double)bbox.minX, (double)xCellWidth, 0, (double)bbox.maxY, 0, -(double)yCellWidth };
 
     OGRSpatialReference oSRS;
     char *pszSRS_WKT = nullptr;
