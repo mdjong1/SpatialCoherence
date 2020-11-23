@@ -87,7 +87,7 @@ int main(int argc, char **argv) {
         streamTime++;
 
         if (streamTime % 20000 == 0) {
-            double percentage = round((double) streamTime / (double) numPoints * 100);
+            int percentage = (int) round((double) streamTime / (double) numPoints * 100);
             if (percentage != lastPercentage) {
                 std::cout << percentage << "% done!\n";
                 lastPercentage = percentage;
