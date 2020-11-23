@@ -30,6 +30,10 @@ struct Bbox {
     Bbox(int min_x, int min_y, int max_x, int max_y) : minX(min_x), minY(min_y), maxX(max_x), maxY(max_y) {}
 };
 
+int nearestThousandth(F64 number) {
+    return (int) round(number / 1000) * 1000;
+}
+
 int main(int argc, char **argv) {
     if (argc != 5) {
         std::cout << "Invalid number of input arguments!\n";
@@ -42,13 +46,16 @@ int main(int argc, char **argv) {
     const int CELL_COUNT = std::stoi(argv[3]); // std::stoi = cast to int
     const int THINNING_FACTOR = std::stoi(argv[4]);
 
+    std::vector<Coordinate> leftTopCorners;
+    std::vector<Timings> timings;
+
     LASreadOpener lasreadopener;
     lasreadopener.set_file_name(inputFile);
     LASreader *lasreader = lasreadopener.open();
 
-    // In AHN3 all corner points are integers
-    const Bbox bbox = Bbox((int) lasreader->get_min_x(), (int) lasreader->get_min_y(),
-                           (int) lasreader->get_max_x(), (int) lasreader->get_max_y());
+    // In AHN3 all corner points are integers, round them to nearest thousandth (84999 -> 85000)
+    const Bbox bbox = Bbox(nearestThousandth(lasreader->get_min_x()), nearestThousandth(lasreader->get_min_y()),
+                           nearestThousandth(lasreader->get_max_x()), nearestThousandth(lasreader->get_max_y()));
 
     std::cout << "BBox boundaries: minX = " << bbox.minX << ", minY = " << bbox.minY << ", maxX = " << bbox.maxX
               << ", maxY = " << bbox.maxY << "\n";
@@ -60,8 +67,6 @@ int main(int argc, char **argv) {
     const int xCellWidth = bbox.xDiff / CELL_COUNT;
     const int yCellWidth = bbox.yDiff / CELL_COUNT;
 
-    std::vector<Coordinate> leftTopCorners;
-
     int count = 0;
 
     for (int x = bbox.minX; x < bbox.maxX; x += xCellWidth) {
@@ -70,8 +75,6 @@ int main(int argc, char **argv) {
             count++;
         }
     }
-
-    std::vector<Timings> timings;
 
     count = 0;
     const int startEpoch = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
@@ -89,8 +92,8 @@ int main(int argc, char **argv) {
 
                 if (lasreader->point.inside_rectangle(corner.x, corner.y, corner.x + xCellWidth, corner.y + yCellWidth)) {
 
-//                std::cout << lasreader->point.get_x() << ", " << lasreader->point.get_y() << " inside " << corner.x << ", " << corner.y << ", " << corner.x + xCellWidth << ", " << corner.y + yCellWidth << "\n";
-//                std::cout << "corner id = " << corner.id << "\n";
+//                    std::cout << lasreader->point.get_x() << ", " << lasreader->point.get_y() << " inside " << corner.x << ", " << corner.y << ", " << corner.x + xCellWidth << ", " << corner.y + yCellWidth << "\n";
+//                    std::cout << "corner id = " << corner.id << "\n";
 
                     int currentEpoch = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 
