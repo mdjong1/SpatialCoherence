@@ -88,14 +88,15 @@ int main(int argc, char **argv) {
 
         if (count % THINNING_FACTOR == 0) {
 
+            // Keep currentEpoch out of corner loop to prevent adding that time as well
+            int currentEpoch = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+
             for (Coordinate corner : leftTopCorners) {
 
                 if (lasreader->point.inside_rectangle(corner.x, corner.y, corner.x + xCellWidth, corner.y + yCellWidth)) {
 
 //                    std::cout << lasreader->point.get_x() << ", " << lasreader->point.get_y() << " inside " << corner.x << ", " << corner.y << ", " << corner.x + xCellWidth << ", " << corner.y + yCellWidth << "\n";
 //                    std::cout << "corner id = " << corner.id << "\n";
-
-                    int currentEpoch = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 
                     try { // Vector exists, update last entry time
                         timings.at(corner.id).lastTime = currentEpoch;
