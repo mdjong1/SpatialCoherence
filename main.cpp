@@ -1,6 +1,5 @@
 #include <iostream>
 #include <vector>
-#include <chrono>
 #include <cmath>
 
 #include "gdal_priv.h"
@@ -80,41 +79,35 @@ int main(int argc, char **argv) {
         }
     }
 
-    count = 0;
-    const int startEpoch = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+    int streamTime = 0;
 
     while (lasreader->read_point()) {
 
-        if (count % 20000 == 0) {
-            double percentage = round((double) count / (double) numPoints * 100);
+        streamTime++;
+
+        if (streamTime % 20000 == 0) {
+            double percentage = round((double) streamTime / (double) numPoints * 100);
+            std::cout << "Stream time is: " << streamTime << "\n";
             std::cout << percentage << "% done!\n";
         }
 
-        if (count % THINNING_FACTOR == 0) {
-
-            // Keep currentEpoch out of corner loop to prevent adding that time as well
-            int currentEpoch = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+        if (streamTime % THINNING_FACTOR == 0) {
 
             for (Coordinate corner : leftTopCorners) {
 
                 if (lasreader->point.inside_rectangle(corner.x, corner.y, corner.x + xCellWidth, corner.y + yCellWidth)) {
 
-//                    std::cout << lasreader->point.get_x() << ", " << lasreader->point.get_y() << " inside " << corner.x << ", " << corner.y << ", " << corner.x + xCellWidth << ", " << corner.y + yCellWidth << "\n";
-//                    std::cout << "corner id = " << corner.id << "\n";
-
                     try { // Vector exists, update last entry time
-                        timings.at(corner.id).lastTime = currentEpoch;
+                        timings.at(corner.id).lastTime = streamTime;
                     }
                     catch (...) { // Vector doesn't exist, set first + last time and push back
-                        timings.emplace_back(currentEpoch, currentEpoch);
+                        timings.emplace_back(streamTime, streamTime);
                     }
 
                     break;
                 }
             }
         }
-
-        count++;
 
     }
 
@@ -138,17 +131,17 @@ int main(int argc, char **argv) {
     char *pszSRS_WKT = nullptr;
     GDALRasterBand *poBand;
 
-    GByte entryTimesRaster[CELL_COUNT * CELL_COUNT];
-    GByte exitTimesRaster[CELL_COUNT * CELL_COUNT];
-    GByte activeTimesRaster[CELL_COUNT * CELL_COUNT];
+    GInt32 entryTimesRaster[CELL_COUNT * CELL_COUNT];
+    GInt32 exitTimesRaster[CELL_COUNT * CELL_COUNT];
+    GInt32 activeTimesRaster[CELL_COUNT * CELL_COUNT];
 
     poDstDS->SetGeoTransform( adfGeoTransform );
 
     std::cout << CELL_COUNT * CELL_COUNT << " " << timings.size() << "\n";
 
     for (int i = 0; i < CELL_COUNT * CELL_COUNT; i++){
-        entryTimesRaster[i] = timings.at(i).firstTime - startEpoch;
-        exitTimesRaster[i] = timings.at(i).lastTime - startEpoch;
+        entryTimesRaster[i] = timings.at(i).firstTime;
+        exitTimesRaster[i] = timings.at(i).lastTime;
         activeTimesRaster[i] = timings.at(i).lastTime - timings.at(i).firstTime;
     }
 
@@ -160,13 +153,13 @@ int main(int argc, char **argv) {
     CPLFree(pszSRS_WKT);
 
     poBand = poDstDS->GetRasterBand(1);
-    poBand->RasterIO(GF_Write, 0, 0, CELL_COUNT, CELL_COUNT, entryTimesRaster, CELL_COUNT, CELL_COUNT, GDT_Byte, 0, 0);
+    poBand->RasterIO(GF_Write, 0, 0, CELL_COUNT, CELL_COUNT, entryTimesRaster, CELL_COUNT, CELL_COUNT, GDT_Int32, 0, 0);
 
     poBand = poDstDS->GetRasterBand(2);
-    poBand->RasterIO(GF_Write, 0, 0, CELL_COUNT, CELL_COUNT, exitTimesRaster, CELL_COUNT, CELL_COUNT, GDT_Byte, 0, 0);
+    poBand->RasterIO(GF_Write, 0, 0, CELL_COUNT, CELL_COUNT, exitTimesRaster, CELL_COUNT, CELL_COUNT, GDT_Int32, 0, 0);
 
     poBand = poDstDS->GetRasterBand(3);
-    poBand->RasterIO(GF_Write, 0, 0, CELL_COUNT, CELL_COUNT, activeTimesRaster, CELL_COUNT, CELL_COUNT, GDT_Byte, 0, 0);
+    poBand->RasterIO(GF_Write, 0, 0, CELL_COUNT, CELL_COUNT, activeTimesRaster, CELL_COUNT, CELL_COUNT, GDT_Int32, 0, 0);
 
     GDALClose((GDALDatasetH) poDstDS);
 
