@@ -30,8 +30,12 @@ struct Bbox {
     Bbox(int min_x, int min_y, int max_x, int max_y) : minX(min_x), minY(min_y), maxX(max_x), maxY(max_y) {}
 };
 
-int nearestThousandth(F64 number) {
-    return (int) round(number / 1000) * 1000;
+int roundUp(F64 number) {
+    int returnValue = (int) number;
+    if (returnValue % 10 == 9){ // Last digit is a 9
+        returnValue++;
+    }
+    return returnValue;
 }
 
 int main(int argc, char **argv) {
@@ -53,9 +57,9 @@ int main(int argc, char **argv) {
     lasreadopener.set_file_name(inputFile);
     LASreader *lasreader = lasreadopener.open();
 
-    // In AHN3 all corner points are integers, round them to nearest thousandth (84999 -> 85000)
-    const Bbox bbox = Bbox(nearestThousandth(lasreader->get_min_x()), nearestThousandth(lasreader->get_min_y()),
-                           nearestThousandth(lasreader->get_max_x()), nearestThousandth(lasreader->get_max_y()));
+    // In AHN3 all corner points are integers, also round them up if precision is off (84999 -> 85000)
+    const Bbox bbox = Bbox(roundUp(lasreader->get_min_x()), roundUp(lasreader->get_min_y()),
+                           roundUp(lasreader->get_max_x()), roundUp(lasreader->get_max_y()));
 
     std::cout << "BBox boundaries: minX = " << bbox.minX << ", minY = " << bbox.minY << ", maxX = " << bbox.maxX
               << ", maxY = " << bbox.maxY << "\n";
