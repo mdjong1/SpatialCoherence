@@ -90,6 +90,7 @@ int main(int argc, char **argv) {
             double percentage = round((double) streamTime / (double) numPoints * 100);
             if (percentage != lastPercentage) {
                 std::cout << percentage << "% done!\n";
+                lastPercentage = percentage;
             }
         }
 
@@ -125,7 +126,7 @@ int main(int argc, char **argv) {
 
     GDALDataset *poDstDS;
     char **papszOptions = nullptr;
-    poDstDS = poDriver->Create(outputFile, CELL_COUNT, CELL_COUNT, 3, GDT_Byte, papszOptions);
+    poDstDS = poDriver->Create(outputFile, CELL_COUNT, CELL_COUNT, 3, GDT_UInt32, papszOptions);
 
     double adfGeoTransform[6] = { (double)bbox.minX, (double)xCellWidth, 0, (double)bbox.maxY, 0, -(double)yCellWidth };
 
@@ -133,9 +134,9 @@ int main(int argc, char **argv) {
     char *pszSRS_WKT = nullptr;
     GDALRasterBand *poBand;
 
-    GInt32 entryTimesRaster[CELL_COUNT * CELL_COUNT];
-    GInt32 exitTimesRaster[CELL_COUNT * CELL_COUNT];
-    GInt32 activeTimesRaster[CELL_COUNT * CELL_COUNT];
+    GUInt32 entryTimesRaster[CELL_COUNT * CELL_COUNT];
+    GUInt32 exitTimesRaster[CELL_COUNT * CELL_COUNT];
+    GUInt32 activeTimesRaster[CELL_COUNT * CELL_COUNT];
 
     poDstDS->SetGeoTransform( adfGeoTransform );
 
@@ -155,13 +156,13 @@ int main(int argc, char **argv) {
     CPLFree(pszSRS_WKT);
 
     poBand = poDstDS->GetRasterBand(1);
-    poBand->RasterIO(GF_Write, 0, 0, CELL_COUNT, CELL_COUNT, entryTimesRaster, CELL_COUNT, CELL_COUNT, GDT_Int32, 0, 0);
+    poBand->RasterIO(GF_Write, 0, 0, CELL_COUNT, CELL_COUNT, entryTimesRaster, CELL_COUNT, CELL_COUNT, GDT_UInt32, 0, 0);
 
     poBand = poDstDS->GetRasterBand(2);
-    poBand->RasterIO(GF_Write, 0, 0, CELL_COUNT, CELL_COUNT, exitTimesRaster, CELL_COUNT, CELL_COUNT, GDT_Int32, 0, 0);
+    poBand->RasterIO(GF_Write, 0, 0, CELL_COUNT, CELL_COUNT, exitTimesRaster, CELL_COUNT, CELL_COUNT, GDT_UInt32, 0, 0);
 
     poBand = poDstDS->GetRasterBand(3);
-    poBand->RasterIO(GF_Write, 0, 0, CELL_COUNT, CELL_COUNT, activeTimesRaster, CELL_COUNT, CELL_COUNT, GDT_Int32, 0, 0);
+    poBand->RasterIO(GF_Write, 0, 0, CELL_COUNT, CELL_COUNT, activeTimesRaster, CELL_COUNT, CELL_COUNT, GDT_UInt32, 0, 0);
 
     GDALClose((GDALDatasetH) poDstDS);
 
