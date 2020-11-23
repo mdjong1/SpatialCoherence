@@ -115,15 +115,14 @@ int main(int argc, char **argv) {
     GDALAllRegister();
 
     const char *pszFormat = "GTiff";
-    GDALDriver *poDriver;
-    poDriver = GetGDALDriverManager()->GetDriverByName(pszFormat);
+    GDALDriver *poDriver = GetGDALDriverManager()->GetDriverByName(pszFormat);
 
     if (poDriver == nullptr)
         exit(1);
 
     GDALDataset *poDstDS;
     char **papszOptions = nullptr;
-    poDstDS = poDriver->Create(outputFile, CELL_COUNT, CELL_COUNT, 2, GDT_Byte, papszOptions);
+    poDstDS = poDriver->Create(outputFile, CELL_COUNT, CELL_COUNT, 3, GDT_Byte, papszOptions);
 
     double adfGeoTransform[6] = { (double)bbox.minX, (double)xCellWidth, 0, (double)bbox.maxY, 0, -(double)yCellWidth };
 
@@ -133,6 +132,7 @@ int main(int argc, char **argv) {
 
     GByte entryTimesRaster[CELL_COUNT * CELL_COUNT];
     GByte exitTimesRaster[CELL_COUNT * CELL_COUNT];
+    GByte activeTimesRaster[CELL_COUNT * CELL_COUNT];
 
     poDstDS->SetGeoTransform( adfGeoTransform );
 
@@ -141,6 +141,7 @@ int main(int argc, char **argv) {
     for (int i = 0; i < CELL_COUNT * CELL_COUNT; i++){
         entryTimesRaster[i] = timings.at(i).firstTime - startEpoch;
         exitTimesRaster[i] = timings.at(i).lastTime - startEpoch;
+        activeTimesRaster[i] = timings.at(i).lastTime - timings.at(i).firstTime;
     }
 
 //    oSRS.SetWellKnownGeogCS("WGS84");
@@ -155,6 +156,9 @@ int main(int argc, char **argv) {
 
     poBand = poDstDS->GetRasterBand(2);
     poBand->RasterIO(GF_Write, 0, 0, CELL_COUNT, CELL_COUNT, exitTimesRaster, CELL_COUNT, CELL_COUNT, GDT_Byte, 0, 0);
+
+    poBand = poDstDS->GetRasterBand(3);
+    poBand->RasterIO(GF_Write, 0, 0, CELL_COUNT, CELL_COUNT, activeTimesRaster, CELL_COUNT, CELL_COUNT, GDT_Byte, 0, 0);
 
     GDALClose((GDALDatasetH) poDstDS);
 
