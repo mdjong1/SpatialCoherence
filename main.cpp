@@ -80,6 +80,7 @@ int main(int argc, char **argv) {
     }
 
     int streamTime = 0;
+    int lastPercentage = -1;
 
     while (lasreader->read_point()) {
 
@@ -87,8 +88,9 @@ int main(int argc, char **argv) {
 
         if (streamTime % 20000 == 0) {
             double percentage = round((double) streamTime / (double) numPoints * 100);
-            std::cout << "Stream time is: " << streamTime << "\n";
-            std::cout << percentage << "% done!\n";
+            if (percentage != lastPercentage) {
+                std::cout << percentage << "% done!\n";
+            }
         }
 
         if (streamTime % THINNING_FACTOR == 0) {
