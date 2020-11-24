@@ -16,8 +16,6 @@ struct Coordinate {
 
 struct Timings {
     int firstTime, lastTime;
-
-    Timings(int first, int last) : firstTime(first), lastTime(last) {}
 };
 
 struct Bbox {
@@ -49,9 +47,6 @@ int main(int argc, char **argv) {
     const int CELL_COUNT = std::stoi(argv[3]); // std::stoi = cast to int
     const int THINNING_FACTOR = std::stoi(argv[4]);
 
-    std::vector<Coordinate> leftTopCorners;
-    std::vector<Timings> timings;
-
     LASreadOpener lasreadopener;
     lasreadopener.set_file_name(inputFile);
     LASreader *lasreader = lasreadopener.open();
@@ -70,14 +65,7 @@ int main(int argc, char **argv) {
     const int xCellWidth = bbox.xDiff / CELL_COUNT;
     const int yCellWidth = bbox.yDiff / CELL_COUNT;
 
-    int count = 0;
-
-    for (int x = bbox.minX; x < bbox.maxX; x += xCellWidth) {
-        for (int y = bbox.minY; y < bbox.maxY; y += yCellWidth) {
-            leftTopCorners.emplace_back(count, x, y);
-            count++;
-        }
-    }
+    Timings timings[CELL_COUNT + 2][CELL_COUNT + 2];
 
     int streamTime = 0;
     int lastPercentage = -1;
@@ -96,20 +84,15 @@ int main(int argc, char **argv) {
 
         if (streamTime % THINNING_FACTOR == 0) {
 
-            for (Coordinate corner : leftTopCorners) {
+            int xGridPos = (bbox.maxX - lasreader->point.get_x()) / xCellWidth;
+            int yGridPos = (bbox.maxY - lasreader->point.get_y()) / yCellWidth;
 
-                if (lasreader->point.inside_rectangle(corner.x, corner.y, corner.x + xCellWidth, corner.y + yCellWidth)) {
-
-                    try { // Vector exists, update last entry time
-                        timings.at(corner.id).lastTime = streamTime;
-                    }
-                    catch (...) { // Vector doesn't exist, set first + last time and push back
-                        timings.emplace_back(streamTime, streamTime);
-                    }
-
-                    break;
-                }
+            if (timings[xGridPos][yGridPos].firstTime == 0) {
+                timings[xGridPos][yGridPos].firstTime = streamTime;
             }
+
+            timings[xGridPos][yGridPos].lastTime = streamTime;
+
         }
 
     }
@@ -140,12 +123,15 @@ int main(int argc, char **argv) {
 
     poDstDS->SetGeoTransform( adfGeoTransform );
 
-    std::cout << CELL_COUNT * CELL_COUNT << " " << timings.size() << "\n";
+    int i = 0;
+    for (int x = 0; x < CELL_COUNT + 2; x++){
+        for (int y = 0; y < CELL_COUNT + 2; y++) {
+            entryTimesRaster[i] = timings[x][y].firstTime;
+            exitTimesRaster[i] = timings[x][y].lastTime;
+            activeTimesRaster[i] = timings[x][y].lastTime - timings[x][y].firstTime;
 
-    for (int i = 0; i < CELL_COUNT * CELL_COUNT; i++){
-        entryTimesRaster[i] = timings.at(i).firstTime;
-        exitTimesRaster[i] = timings.at(i).lastTime;
-        activeTimesRaster[i] = timings.at(i).lastTime - timings.at(i).firstTime;
+            i++;
+        }
     }
 
 //    oSRS.SetWellKnownGeogCS("WGS84");
