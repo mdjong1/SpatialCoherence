@@ -126,8 +126,8 @@ int main(int argc, char **argv) {
     poDstDS->SetGeoTransform( adfGeoTransform );
 
     int i = 0;
-    for (int x = 0; x < CELL_COUNT; x++){
-        for (int y = 0; y < CELL_COUNT; y++) {
+    for (int y = 0; y < CELL_COUNT; y++) {
+        for (int x = 0; x < CELL_COUNT; x++){
             entryTimesRaster[i] = timings[x][y].firstTime;
             exitTimesRaster[i] = timings[x][y].lastTime;
             activeTimesRaster[i] = timings[x][y].lastTime - timings[x][y].firstTime;
