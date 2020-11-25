@@ -44,7 +44,7 @@ int main(int argc, char **argv) {
 
     const char *inputFile = argv[1];
     const char *outputFile = argv[2];
-    const int CELL_COUNT = std::stoi(argv[3]); // std::stoi = cast to int
+    int CELL_COUNT = std::stoi(argv[3]); // std::stoi = cast to int
     const int THINNING_FACTOR = std::stoi(argv[4]);
 
     LASreadOpener lasreadopener;
@@ -65,7 +65,9 @@ int main(int argc, char **argv) {
     const int xCellWidth = bbox.xDiff / CELL_COUNT;
     const int yCellWidth = bbox.yDiff / CELL_COUNT;
 
-    Timings timings[CELL_COUNT + 2][CELL_COUNT + 2];
+    CELL_COUNT += 2;
+
+    Timings timings[CELL_COUNT][CELL_COUNT];
 
     int streamTime = 0;
     int lastPercentage = -1;
@@ -84,7 +86,7 @@ int main(int argc, char **argv) {
 
         if (streamTime % THINNING_FACTOR == 0) {
 
-            int xGridPos = (bbox.maxX - lasreader->point.get_x()) / xCellWidth;
+            int xGridPos = CELL_COUNT - ((bbox.maxX - lasreader->point.get_x()) / xCellWidth);
             int yGridPos = (bbox.maxY - lasreader->point.get_y()) / yCellWidth;
 
             if (timings[xGridPos][yGridPos].firstTime == 0) {
@@ -124,8 +126,8 @@ int main(int argc, char **argv) {
     poDstDS->SetGeoTransform( adfGeoTransform );
 
     int i = 0;
-    for (int x = 0; x < CELL_COUNT + 2; x++){
-        for (int y = 0; y < CELL_COUNT + 2; y++) {
+    for (int x = 0; x < CELL_COUNT; x++){
+        for (int y = 0; y < CELL_COUNT; y++) {
             entryTimesRaster[i] = timings[x][y].firstTime;
             exitTimesRaster[i] = timings[x][y].lastTime;
             activeTimesRaster[i] = timings[x][y].lastTime - timings[x][y].firstTime;
