@@ -162,6 +162,10 @@ int main(int argc, char **argv) {
 
     Tile currentTile = tiles[startTile];
 
+    int cellWidth, cellHeight;
+    int bboxMinX = INT_MAX;  // Ensure next value is always smaller
+    int bboxMaxY = INT_MIN;  // Ensure next value is always larger
+
     for (int tileNum = 0; tileNum < numTilesToProcess; tileNum++) {
 
         LASreadOpener lasreadopener;
@@ -175,12 +179,22 @@ int main(int argc, char **argv) {
         cout << "BBox boundaries: minX = " << bbox.minX << ", minY = " << bbox.minY << ", maxX = " << bbox.maxX
                   << ", maxY = " << bbox.maxY << "\n";
 
+        if (bbox.minX < bboxMinX) {
+            bboxMinX = bbox.minX;
+        }
+        if (bbox.maxY > bboxMaxY) {
+            bboxMaxY = bbox.maxY;
+        }
+
         const int numPoints = lasreader->npoints;
 
         cout << "Number of points: " << numPoints << "\n";
 
         const int xCellWidth = bbox.xDiff / CELL_COUNT;
         const int yCellWidth = bbox.yDiff / CELL_COUNT;
+
+        cellWidth = xCellWidth;
+        cellHeight = yCellWidth;
 
         Timings timings[MAX_CELL_COUNT][MAX_CELL_COUNT];
 
@@ -239,7 +253,7 @@ int main(int argc, char **argv) {
     char **papszOptions = nullptr;
     poDstDS = poDriver->Create(outputFile, TOTAL_RASTER_SIZE, TOTAL_RASTER_SIZE, 3, GDT_UInt32, papszOptions);
 
-    double adfGeoTransform[6] = { (double)bbox.minX, (double)xCellWidth, 0, (double)bbox.maxY, 0, -(double)yCellWidth };
+    double adfGeoTransform[6] = { (double)bboxMinX, (double)cellWidth, 0, (double)bboxMaxY, 0, -(double)cellHeight };
 
     OGRSpatialReference oSRS;
     char *pszSRS_WKT = nullptr;
