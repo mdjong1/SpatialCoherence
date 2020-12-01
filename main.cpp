@@ -5,9 +5,10 @@
 #include <string>
 #include <filesystem>
 #include <map>
+#include <list>
 
-//#include "gdal_priv.h"
-//#include "cpl_conv.h"
+#include "gdal_priv.h"
+#include "cpl_conv.h"
 
 #include "lasreader.hpp"
 
@@ -111,7 +112,7 @@ Tile createTile(string inputData) {
 }
 
 string getTileNameFromPath(const filesystem::path &inputPath) {
-    return inputPath.stem().u8string().substr(inputPath.stem().u8string().find('_') + 1, inputPath.stem().u8string().size());
+    return inputPath.stem().generic_string().substr(inputPath.stem().generic_string().find('_') + 1, inputPath.stem().generic_string().size());
 }
 
 int main(int argc, char **argv) {
@@ -153,7 +154,7 @@ int main(int argc, char **argv) {
     map<string, Tile> tiles;
 
     for (const auto &eligibleFile : eligibleFiles) {
-        Tile insertTile = createTile(eligibleFile.stem().u8string());
+        Tile insertTile = createTile(eligibleFile.stem().generic_string());
         insertTile.filepath = eligibleFile;
 
         tiles.insert(pair<string, Tile>(getTileNameFromPath(eligibleFile), insertTile));
@@ -164,7 +165,7 @@ int main(int argc, char **argv) {
     for (int tileNum = 0; tileNum < numTilesToProcess; tileNum++) {
 
         LASreadOpener lasreadopener;
-        lasreadopener.set_file_name(currentTile.filepath.u8string().c_str());  // filesystem::path -> string -> char*
+        lasreadopener.set_file_name(currentTile.filepath.generic_string().c_str());  // filesystem::path -> string -> char*
         LASreader *lasreader = lasreadopener.open();
 
         // In AHN3 all corner points are integers, also round them up if precision is off (84999 -> 85000)
