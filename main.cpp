@@ -97,7 +97,7 @@ Tile createTile(string inputData) {
     Tile outputTile;
     for (int i = inputData.size() - 1; i >= 0; i--) {
         if (isdigit(inputData[i]) && outputTile.colId == -1) {
-            outputTile.colId = (int) inputData[i] - 48;
+            outputTile.colId = (int) inputData[i] - 48;  // Adjust for ASCII with -48
         } else if (!isdigit(inputData[i]) && outputTile.rowSpec.empty()) {
             outputTile.rowSpec = inputData[i];
         } else if (!isdigit(inputData[i]) && outputTile.rowInd == "") {
@@ -132,7 +132,6 @@ int main(int argc, char **argv) {
     const int THINNING_FACTOR = stoi(argv[6]);
 
     const int MAX_CELL_COUNT = CELL_COUNT + 2;
-    const int TOTAL_RASTER_SIZE = MAX_CELL_COUNT * numTilesToProcess;
 
     GDALAllRegister();
 
@@ -164,7 +163,9 @@ int main(int argc, char **argv) {
 
     int cellWidth, cellHeight;
     int bboxMinX = INT_MAX;  // Ensure next value is always smaller
-    int bboxMaxY = INT_MIN;  // Ensure next value is always larger
+    int bboxMinY = INT_MAX;
+    int bboxMaxX = INT_MIN;  // Ensure next value is always larger
+    int bboxMaxY = INT_MIN;
 
     for (int tileNum = 0; tileNum < numTilesToProcess; tileNum++) {
 
@@ -179,12 +180,14 @@ int main(int argc, char **argv) {
         cout << "BBox boundaries: minX = " << bbox.minX << ", minY = " << bbox.minY << ", maxX = " << bbox.maxX
                   << ", maxY = " << bbox.maxY << "\n";
 
-        if (bbox.minX < bboxMinX) {
+        if (bbox.minX < bboxMinX)
             bboxMinX = bbox.minX;
-        }
-        if (bbox.maxY > bboxMaxY) {
+        if (bbox.minY < bboxMinY)
+            bboxMinY = bbox.minY;
+        if (bbox.maxX > bboxMaxX)
+            bboxMaxX = bbox.maxX;
+        if (bbox.maxY > bboxMaxY)
             bboxMaxY = bbox.maxY;
-        }
 
         const int numPoints = lasreader->npoints;
 
@@ -225,6 +228,9 @@ int main(int argc, char **argv) {
             }
         }
 
+        lasreader->close();
+        delete lasreader;
+
         for (int y = 0; y < MAX_CELL_COUNT; y++) {
             for (int x = 0; x < MAX_CELL_COUNT; x++){
                 entryTimesRaster[rasterCellIndex] = timings[x][y].firstTime;
@@ -235,11 +241,11 @@ int main(int argc, char **argv) {
             }
         }
 
-        lasreader->close();
-        delete lasreader;
-
         currentTile = tiles[getNextTileName(currentTile)];
     }
+
+    const int rasterXSize = (bboxMaxX - bboxMinX) / cellWidth;
+    const int rasterYSize = (bboxMaxY - bboxMinY) / cellHeight;
 
     cout << "Writing GeoTIFF \n";
 
@@ -251,7 +257,7 @@ int main(int argc, char **argv) {
 
     GDALDataset *poDstDS;
     char **papszOptions = nullptr;
-    poDstDS = poDriver->Create(outputFile, TOTAL_RASTER_SIZE, TOTAL_RASTER_SIZE, 3, GDT_UInt32, papszOptions);
+    poDstDS = poDriver->Create(outputFile, rasterXSize, rasterYSize, 3, GDT_UInt32, papszOptions);
 
     double adfGeoTransform[6] = { (double)bboxMinX, (double)cellWidth, 0, (double)bboxMaxY, 0, -(double)cellHeight };
 
@@ -269,13 +275,13 @@ int main(int argc, char **argv) {
     CPLFree(pszSRS_WKT);
 
     poBand = poDstDS->GetRasterBand(1);
-    poBand->RasterIO(GF_Write, 0, 0, TOTAL_RASTER_SIZE, TOTAL_RASTER_SIZE, entryTimesRaster, TOTAL_RASTER_SIZE, TOTAL_RASTER_SIZE, GDT_UInt32, 0, 0);
+    poBand->RasterIO(GF_Write, 0, 0, rasterXSize, rasterYSize, entryTimesRaster, rasterXSize, rasterYSize, GDT_UInt32, 0, 0);
 
     poBand = poDstDS->GetRasterBand(2);
-    poBand->RasterIO(GF_Write, 0, 0, TOTAL_RASTER_SIZE, TOTAL_RASTER_SIZE, exitTimesRaster, TOTAL_RASTER_SIZE, TOTAL_RASTER_SIZE, GDT_UInt32, 0, 0);
+    poBand->RasterIO(GF_Write, 0, 0, rasterXSize, rasterYSize, exitTimesRaster, rasterXSize, rasterYSize, GDT_UInt32, 0, 0);
 
     poBand = poDstDS->GetRasterBand(3);
-    poBand->RasterIO(GF_Write, 0, 0, TOTAL_RASTER_SIZE, TOTAL_RASTER_SIZE, activeTimesRaster, TOTAL_RASTER_SIZE, TOTAL_RASTER_SIZE, GDT_UInt32, 0, 0);
+    poBand->RasterIO(GF_Write, 0, 0, rasterXSize, rasterYSize, activeTimesRaster, rasterXSize, rasterYSize, GDT_UInt32, 0, 0);
 
     GDALClose((GDALDatasetH) poDstDS);
 
