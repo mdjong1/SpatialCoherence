@@ -1,18 +1,75 @@
 #include <iostream>
+#include <utility>
 #include <vector>
 #include <cmath>
+#include <string>
+#include <filesystem>
+#include <map>
 
-#include "gdal_priv.h"
-#include "cpl_conv.h"
+//#include "gdal_priv.h"
+//#include "cpl_conv.h"
 
 #include "lasreader.hpp"
 
+using namespace std;
+namespace fs = filesystem;
 
 struct Coordinate {
     double id, x, y;
 
     Coordinate(int paramID, double paramX, double paramY) : id(paramID), x(paramX), y(paramY) {}
 };
+
+struct Tile {
+    int clusterId = -1;  // e.g. 37 (01 - 70)
+    string rowInd;  // e.g. E (A - G)
+    string rowSpec;  // e.g. N (always N or Z)
+    int colId = -1;  // e.g. 1 (always 1 or 2)
+    filesystem::path filepath; // path to file
+};
+
+string getTileNameFromTile(const Tile& inputTile) {
+    return to_string(inputTile.clusterId) + inputTile.rowInd + inputTile.rowSpec + to_string(inputTile.colId);
+}
+
+string getNextTileName(Tile currentTile) {
+    Tile nextTile;
+
+    if (currentTile.clusterId + 1 <= 70) {
+
+        if (currentTile.colId == 1) {
+            nextTile.clusterId = currentTile.clusterId;
+            nextTile.rowInd = currentTile.rowInd;
+            nextTile.rowSpec = currentTile.rowSpec;
+            nextTile.colId = 2;
+
+        } else {
+            nextTile.colId = 1;
+
+            if (currentTile.rowSpec == "N") {
+                nextTile.clusterId = currentTile.clusterId;
+                nextTile.rowInd = currentTile.rowInd;
+                nextTile.rowSpec = "Z";
+
+            } else {
+                nextTile.rowSpec = "N";
+
+                if (currentTile.rowInd == "H") {  // Reached end of letter range, restarting
+                    nextTile.rowInd = "A";
+                    nextTile.clusterId = currentTile.clusterId + 1;
+
+                } else {
+                    char currentRowInd = currentTile.rowInd[0] + 1;  // ASCII value +1 == next letter in alphabet
+                    nextTile.rowInd = currentRowInd;
+
+                    nextTile.clusterId = currentTile.clusterId;
+                }
+            }
+        }
+    }
+
+    return getTileNameFromTile(nextTile);
+}
 
 struct Timings {
     int firstTime, lastTime;
@@ -29,79 +86,147 @@ struct Bbox {
 
 int roundUp(F64 number) {
     int returnValue = (int) number;
-    if (returnValue % 10 == 9){ // Last digit is a 9
+    if (returnValue % 10 == 9) { // Last digit is a 9
         returnValue++;
     }
     return returnValue;
 }
 
+Tile createTile(string inputData) {
+    Tile outputTile;
+    for (int i = inputData.size() - 1; i >= 0; i--) {
+        if (isdigit(inputData[i]) && outputTile.colId == -1) {
+            outputTile.colId = (int) inputData[i] - 48;
+        } else if (!isdigit(inputData[i]) && outputTile.rowSpec.empty()) {
+            outputTile.rowSpec = inputData[i];
+        } else if (!isdigit(inputData[i]) && outputTile.rowInd == "") {
+            outputTile.rowInd = inputData[i];
+        } else if (isdigit(inputData[i]) && outputTile.clusterId == -1) {
+            outputTile.clusterId = (int) inputData[i] - 48;
+        } else if (isdigit(inputData[i]) && outputTile.clusterId != -1) {
+            outputTile.clusterId = stoi(inputData.substr(i, 2));
+        }
+    }
+    return outputTile;
+}
+
+string getTileNameFromPath(const filesystem::path &inputPath) {
+    return inputPath.stem().u8string().substr(inputPath.stem().u8string().find('_') + 1, inputPath.stem().u8string().size());
+}
+
 int main(int argc, char **argv) {
-    if (argc != 5) {
-        std::cout << "Invalid number of input arguments!\n";
-        std::cout << "arg1: input_file, arg2: output_file, arg3: cell_count, arg4: thinning_factor\n";
+    if (argc != 7) {
+        cout << "Invalid number of input arguments!\n";
+        cout << "arg1: input folder, arg2: start tile, arg3: num tiles to process, arg4: output file, arg5: cell count, arg6: thinning_factor\n";
         return 0;
     }
 
-    const char *inputFile = argv[1];
-    const char *outputFile = argv[2];
-    int CELL_COUNT = std::stoi(argv[3]); // std::stoi = cast to int
-    const int THINNING_FACTOR = std::stoi(argv[4]);
-
-    LASreadOpener lasreadopener;
-    lasreadopener.set_file_name(inputFile);
-    LASreader *lasreader = lasreadopener.open();
-
-    // In AHN3 all corner points are integers, also round them up if precision is off (84999 -> 85000)
-    const Bbox bbox = Bbox(roundUp(lasreader->get_min_x()), roundUp(lasreader->get_min_y()),
-                           roundUp(lasreader->get_max_x()), roundUp(lasreader->get_max_y()));
-
-    std::cout << "BBox boundaries: minX = " << bbox.minX << ", minY = " << bbox.minY << ", maxX = " << bbox.maxX
-              << ", maxY = " << bbox.maxY << "\n";
-
-    const int numPoints = lasreader->npoints;
-
-    std::cout << "Number of points: " << numPoints << "\n";
-
-    const int xCellWidth = bbox.xDiff / CELL_COUNT;
-    const int yCellWidth = bbox.yDiff / CELL_COUNT;
-
-    CELL_COUNT += 2;
-
-    Timings timings[CELL_COUNT][CELL_COUNT];
-
     int streamTime = 0;
-    int lastPercentage = -1;
 
-    while (lasreader->read_point()) {
+    const string inputFolder = argv[1];
+    const string startTile = argv[2];
+    const int numTilesToProcess = stoi(argv[3]);
+    const char *outputFile = argv[4];
+    const int CELL_COUNT = stoi(argv[5]); // stoi = cast to int
+    const int THINNING_FACTOR = stoi(argv[6]);
 
-        streamTime++;
-
-        if (streamTime % 20000 == 0) {
-            int percentage = (int) round((double) streamTime / (double) numPoints * 100);
-            if (percentage != lastPercentage) {
-                std::cout << percentage << "% done!\n";
-                lastPercentage = percentage;
-            }
-        }
-
-        if (streamTime % THINNING_FACTOR == 0) {
-
-            int xGridPos = CELL_COUNT - ((bbox.maxX - lasreader->point.get_x()) / xCellWidth);
-            int yGridPos = (bbox.maxY - lasreader->point.get_y()) / yCellWidth;
-
-            if (timings[xGridPos][yGridPos].firstTime == 0) {
-                timings[xGridPos][yGridPos].firstTime = streamTime;
-            }
-
-            timings[xGridPos][yGridPos].lastTime = streamTime;
-
-        }
-
-    }
-
-    std::cout << "Writing GeoTIFF \n";
+    const int MAX_CELL_COUNT = CELL_COUNT + 2;
+    const int TOTAL_RASTER_SIZE = MAX_CELL_COUNT * numTilesToProcess;
 
     GDALAllRegister();
+
+    GUInt32 entryTimesRaster[MAX_CELL_COUNT * MAX_CELL_COUNT * numTilesToProcess];
+    GUInt32 exitTimesRaster[MAX_CELL_COUNT * MAX_CELL_COUNT * numTilesToProcess];
+    GUInt32 activeTimesRaster[MAX_CELL_COUNT * MAX_CELL_COUNT * numTilesToProcess];
+
+    int rasterCellIndex = 0;
+
+    list<filesystem::path> eligibleFiles;
+
+    for (const auto &entry : fs::directory_iterator(inputFolder)) {
+        filesystem::path fileExtension = fs::path(entry.path()).extension();
+        if (fileExtension == ".LAZ" || fileExtension == ".laz") {
+            eligibleFiles.push_back(entry.path());
+        }
+    }
+
+    map<string, Tile> tiles;
+
+    for (const auto &eligibleFile : eligibleFiles) {
+        Tile insertTile = createTile(eligibleFile.stem().u8string());
+        insertTile.filepath = eligibleFile;
+
+        tiles.insert(pair<string, Tile>(getTileNameFromPath(eligibleFile), insertTile));
+    }
+
+    Tile currentTile = tiles[startTile];
+
+    for (int tileNum = 0; tileNum < numTilesToProcess; tileNum++) {
+
+        LASreadOpener lasreadopener;
+        lasreadopener.set_file_name(currentTile.filepath.u8string().c_str());  // filesystem::path -> string -> char*
+        LASreader *lasreader = lasreadopener.open();
+
+        // In AHN3 all corner points are integers, also round them up if precision is off (84999 -> 85000)
+        const Bbox bbox = Bbox(roundUp(lasreader->get_min_x()), roundUp(lasreader->get_min_y()),
+                               roundUp(lasreader->get_max_x()), roundUp(lasreader->get_max_y()));
+
+        cout << "BBox boundaries: minX = " << bbox.minX << ", minY = " << bbox.minY << ", maxX = " << bbox.maxX
+                  << ", maxY = " << bbox.maxY << "\n";
+
+        const int numPoints = lasreader->npoints;
+
+        cout << "Number of points: " << numPoints << "\n";
+
+        const int xCellWidth = bbox.xDiff / CELL_COUNT;
+        const int yCellWidth = bbox.yDiff / CELL_COUNT;
+
+        Timings timings[MAX_CELL_COUNT][MAX_CELL_COUNT];
+
+        int lastPercentage = -1;
+
+        while (lasreader->read_point()) {
+
+            streamTime++;
+
+            if (streamTime % 20000 == 0) {
+                int percentage = (int) round((double) streamTime / (double) numPoints * 100);
+                if (percentage != lastPercentage) {
+                    cout << percentage << "% done!\n";
+                    lastPercentage = percentage;
+                }
+            }
+
+            if (streamTime % THINNING_FACTOR == 0) {
+
+                int xGridPos = MAX_CELL_COUNT - ((bbox.maxX - lasreader->point.get_x()) / xCellWidth);
+                int yGridPos = (bbox.maxY - lasreader->point.get_y()) / yCellWidth;
+
+                if (timings[xGridPos][yGridPos].firstTime == 0) {
+                    timings[xGridPos][yGridPos].firstTime = streamTime;
+                }
+
+                timings[xGridPos][yGridPos].lastTime = streamTime;
+            }
+        }
+
+        for (int y = 0; y < MAX_CELL_COUNT; y++) {
+            for (int x = 0; x < MAX_CELL_COUNT; x++){
+                entryTimesRaster[rasterCellIndex] = timings[x][y].firstTime;
+                exitTimesRaster[rasterCellIndex] = timings[x][y].lastTime;
+                activeTimesRaster[rasterCellIndex] = timings[x][y].lastTime - timings[x][y].firstTime;
+
+                rasterCellIndex++;
+            }
+        }
+
+        lasreader->close();
+        delete lasreader;
+
+        currentTile = tiles[getNextTileName(currentTile)];
+    }
+
+    cout << "Writing GeoTIFF \n";
 
     const char *pszFormat = "GTiff";
     GDALDriver *poDriver = GetGDALDriverManager()->GetDriverByName(pszFormat);
@@ -111,7 +236,7 @@ int main(int argc, char **argv) {
 
     GDALDataset *poDstDS;
     char **papszOptions = nullptr;
-    poDstDS = poDriver->Create(outputFile, CELL_COUNT, CELL_COUNT, 3, GDT_UInt32, papszOptions);
+    poDstDS = poDriver->Create(outputFile, TOTAL_RASTER_SIZE, TOTAL_RASTER_SIZE, 3, GDT_UInt32, papszOptions);
 
     double adfGeoTransform[6] = { (double)bbox.minX, (double)xCellWidth, 0, (double)bbox.maxY, 0, -(double)yCellWidth };
 
@@ -119,24 +244,9 @@ int main(int argc, char **argv) {
     char *pszSRS_WKT = nullptr;
     GDALRasterBand *poBand;
 
-    GUInt32 entryTimesRaster[CELL_COUNT * CELL_COUNT];
-    GUInt32 exitTimesRaster[CELL_COUNT * CELL_COUNT];
-    GUInt32 activeTimesRaster[CELL_COUNT * CELL_COUNT];
-
     poDstDS->SetGeoTransform( adfGeoTransform );
 
-    int i = 0;
-    for (int y = 0; y < CELL_COUNT; y++) {
-        for (int x = 0; x < CELL_COUNT; x++){
-            entryTimesRaster[i] = timings[x][y].firstTime;
-            exitTimesRaster[i] = timings[x][y].lastTime;
-            activeTimesRaster[i] = timings[x][y].lastTime - timings[x][y].firstTime;
-
-            i++;
-        }
-    }
-
-//    oSRS.SetWellKnownGeogCS("WGS84");
+    //    oSRS.SetWellKnownGeogCS("WGS84");
     oSRS.importFromEPSG(28992);
     oSRS.exportToWkt(&pszSRS_WKT);
 
@@ -144,19 +254,15 @@ int main(int argc, char **argv) {
     CPLFree(pszSRS_WKT);
 
     poBand = poDstDS->GetRasterBand(1);
-    poBand->RasterIO(GF_Write, 0, 0, CELL_COUNT, CELL_COUNT, entryTimesRaster, CELL_COUNT, CELL_COUNT, GDT_UInt32, 0, 0);
+    poBand->RasterIO(GF_Write, 0, 0, TOTAL_RASTER_SIZE, TOTAL_RASTER_SIZE, entryTimesRaster, TOTAL_RASTER_SIZE, TOTAL_RASTER_SIZE, GDT_UInt32, 0, 0);
 
     poBand = poDstDS->GetRasterBand(2);
-    poBand->RasterIO(GF_Write, 0, 0, CELL_COUNT, CELL_COUNT, exitTimesRaster, CELL_COUNT, CELL_COUNT, GDT_UInt32, 0, 0);
+    poBand->RasterIO(GF_Write, 0, 0, TOTAL_RASTER_SIZE, TOTAL_RASTER_SIZE, exitTimesRaster, TOTAL_RASTER_SIZE, TOTAL_RASTER_SIZE, GDT_UInt32, 0, 0);
 
     poBand = poDstDS->GetRasterBand(3);
-    poBand->RasterIO(GF_Write, 0, 0, CELL_COUNT, CELL_COUNT, activeTimesRaster, CELL_COUNT, CELL_COUNT, GDT_UInt32, 0, 0);
+    poBand->RasterIO(GF_Write, 0, 0, TOTAL_RASTER_SIZE, TOTAL_RASTER_SIZE, activeTimesRaster, TOTAL_RASTER_SIZE, TOTAL_RASTER_SIZE, GDT_UInt32, 0, 0);
 
     GDALClose((GDALDatasetH) poDstDS);
-
-
-    lasreader->close();
-    delete lasreader;
 
     return 0;
 }

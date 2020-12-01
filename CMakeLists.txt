@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.17)
 project(SpatialCoherence)
 
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 20)
 
 include_directories(/home/maarten/LAStools/LASzip/src /home/maarten/LAStools/LASlib/inc)
 
