@@ -139,8 +139,6 @@ int main(int argc, char **argv) {
     GUInt32 exitTimesRaster[MAX_CELL_COUNT * MAX_CELL_COUNT * numTilesToProcess];
     GUInt32 activeTimesRaster[MAX_CELL_COUNT * MAX_CELL_COUNT * numTilesToProcess];
 
-    int rasterCellIndex = 0;
-
     list<filesystem::path> eligibleFiles;
 
     for (const auto &entry : fs::directory_iterator(inputFolder)) {
@@ -231,6 +229,8 @@ int main(int argc, char **argv) {
         lasreader->close();
         delete lasreader;
 
+        int rasterCellIndex = tileNum * MAX_CELL_COUNT;
+
         for (int y = 0; y < MAX_CELL_COUNT; y++) {
             for (int x = 0; x < MAX_CELL_COUNT; x++){
                 entryTimesRaster[rasterCellIndex] = timings[x][y].firstTime;
@@ -239,6 +239,7 @@ int main(int argc, char **argv) {
 
                 rasterCellIndex++;
             }
+            rasterCellIndex += tileNum * MAX_CELL_COUNT;
         }
 
         currentTile = tiles[getNextTileName(currentTile)];
