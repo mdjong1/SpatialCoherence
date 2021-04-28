@@ -3,11 +3,7 @@
 #include <vector>
 #include <cmath>
 #include <string>
-#include <filesystem>
-#include <map>
 #include <list>
-#include <algorithm>
-#include <iterator>
 #include <fstream>
 
 #include "gdal_priv.h"
@@ -16,7 +12,6 @@
 #include "lasreader.hpp"
 
 using namespace std;
-namespace fs = filesystem;
 
 struct Timings {
     int firstTime, lastTime;
